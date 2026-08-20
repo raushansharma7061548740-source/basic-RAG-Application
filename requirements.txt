@@ -1,0 +1,12 @@
+langchain
+langchain-community
+langchain-core
+langchain-mistralai
+mistralai
+faiss-cpu
+sentence-transformers
+pypdf
+python-dotenv
+fastapi
+uvicorn
+streamlit
