@@ -1,6 +1,7 @@
-import os
 import streamlit as st
 from dotenv import load_dotenv
+
+load_dotenv()
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -8,70 +9,27 @@ from langchain_mistralai import ChatMistralAI
 from langchain_core.prompts import ChatPromptTemplate
 
 
-# ---------------------------------------------------------
-# Page configuration
-# ---------------------------------------------------------
+# -----------------------------
+# Page Configuration
+# -----------------------------
 
 st.set_page_config(
-    page_title="Deep Learning RAG Assistant",
-    page_icon="🤖",
-    layout="wide"
+    page_title="RAG Document Assistant",
+    page_icon="📚",
+    layout="centered"
 )
 
-
-# ---------------------------------------------------------
-# Load environment variables
-# ---------------------------------------------------------
-
-load_dotenv()
+st.title("📚 RAG Document Assistant")
+st.caption("Ask questions from your document using Mistral AI")
 
 
-# ---------------------------------------------------------
-# Custom CSS
-# ---------------------------------------------------------
-
-st.markdown(
-    """
-    <style>
-        .main-title {
-            text-align: center;
-            font-size: 42px;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        .sub-title {
-            text-align: center;
-            color: #777;
-            font-size: 17px;
-            margin-bottom: 25px;
-        }
-
-        .source-box {
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid #dddddd;
-            margin-bottom: 10px;
-        }
-
-        .stChatMessage {
-            border-radius: 12px;
-            padding: 8px;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# ---------------------------------------------------------
-# Load RAG components only once
-# ---------------------------------------------------------
+# -----------------------------
+# Load Embeddings & Vector DB
+# -----------------------------
 
 @st.cache_resource
-def load_rag_system():
+def load_vectorstore():
 
-    # This must be the same model used while creating Chroma DB
     embeddings = HuggingFaceEmbeddings(
         model_name="BAAI/bge-small-en-v1.5"
     )
@@ -81,149 +39,75 @@ def load_rag_system():
         embedding_function=embeddings
     )
 
-    retriever = vectorstore.as_retriever(
-        search_type="mmr",
-        search_kwargs={
-            "k": 4,
-            "fetch_k": 10,
-            "lambda_mult": 0.5
-        }
+    return vectorstore
+
+
+vectorstore = load_vectorstore()
+
+
+# -----------------------------
+# Retriever
+# -----------------------------
+
+retriever = vectorstore.as_retriever(
+    search_type="mmr",
+    search_kwargs={
+        "k": 4,
+        "fetch_k": 10,
+        "lambda_mult": 0.5
+    }
+)
+
+
+# -----------------------------
+# Mistral Model
+# -----------------------------
+
+@st.cache_resource
+def load_model():
+
+    return ChatMistralAI(
+        model="mistral-medium-3-5",
+        temperature=0.3
     )
 
-    llm = ChatMistralAI(
-        model="mistral-medium-3-5"
-    )
 
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """
-You are a helpful AI assistant.
+llm = load_model()
 
-Use only the provided context to answer the user's question.
 
-If the answer is not present in the provided context, respond exactly:
+# -----------------------------
+# Prompt
+# -----------------------------
 
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """You are a helpful AI assistant.
+
+Use only the provided context to answer the question.
+
+If the answer is not present in the context, say:
 "I could not find the answer in the document."
-
-Do not use outside knowledge.
-Give a clear and easy-to-understand answer.
 """
-            ),
-            (
-                "human",
-                """
-Context:
+        ),
+        (
+            "human",
+            """Context:
+
 {context}
 
 Question:
 {question}
 """
-            )
-        ]
-    )
-
-    return retriever, llm, prompt
-
-
-# ---------------------------------------------------------
-# Generate response
-# ---------------------------------------------------------
-
-def generate_response(query, retriever, llm, prompt):
-
-    retrieved_docs = retriever.invoke(query)
-
-    context = "\n\n".join(
-        doc.page_content for doc in retrieved_docs
-    )
-
-    final_prompt = prompt.invoke(
-        {
-            "context": context,
-            "question": query
-        }
-    )
-
-    response = llm.invoke(final_prompt)
-
-    return response.content, retrieved_docs
-
-
-# ---------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------
-
-with st.sidebar:
-
-    st.title("⚙️ RAG Settings")
-
-    st.success("Vector database connected")
-
-    st.markdown("### Current configuration")
-
-    st.write("**Embedding model:**")
-    st.code("BAAI/bge-small-en-v1.5")
-
-    st.write("**LLM:**")
-    st.code("mistral-medium-3-5")
-
-    st.write("**Retrieval method:**")
-    st.code("Maximum Marginal Relevance")
-
-    st.write("**Retrieved chunks:** 4")
-
-    st.divider()
-
-    show_sources = st.checkbox(
-        "Show retrieved document chunks",
-        value=True
-    )
-
-    if st.button(
-        "Clear conversation",
-        use_container_width=True
-    ):
-        st.session_state.messages = []
-        st.rerun()
-
-
-# ---------------------------------------------------------
-# Header
-# ---------------------------------------------------------
-
-st.markdown(
-    '<div class="main-title">🤖 Deep Learning RAG Assistant</div>',
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    """
-    <div class="sub-title">
-        Ask questions from your uploaded Deep Learning PDF
-    </div>
-    """,
-    unsafe_allow_html=True
+        )
+    ]
 )
 
 
-# ---------------------------------------------------------
-# Initialize system
-# ---------------------------------------------------------
-
-try:
-    retriever, llm, prompt = load_rag_system()
-
-except Exception as error:
-    st.error("Could not load the RAG system.")
-    st.exception(error)
-    st.stop()
-
-
-# ---------------------------------------------------------
-# Chat history
-# ---------------------------------------------------------
+# -----------------------------
+# Chat History
+# -----------------------------
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -232,47 +116,19 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
 
     with st.chat_message(message["role"]):
-
         st.markdown(message["content"])
 
-        if (
-            message["role"] == "assistant"
-            and show_sources
-            and message.get("sources")
-        ):
 
-            with st.expander("View retrieved document chunks"):
+# -----------------------------
+# Chat Input
+# -----------------------------
 
-                for index, source in enumerate(
-                    message["sources"],
-                    start=1
-                ):
-
-                    page_number = source.metadata.get(
-                        "page",
-                        "Unknown"
-                    )
-
-                    st.markdown(
-                        f"#### Source {index} — Page {page_number}"
-                    )
-
-                    st.write(source.page_content)
-
-                    st.divider()
-
-
-# ---------------------------------------------------------
-# User input
-# ---------------------------------------------------------
-
-query = st.chat_input(
-    "Ask something about deep learning..."
-)
+query = st.chat_input("Ask something about the document...")
 
 
 if query:
 
+    # Show user message
     st.session_state.messages.append(
         {
             "role": "user",
@@ -283,58 +139,42 @@ if query:
     with st.chat_message("user"):
         st.markdown(query)
 
+
+    # Retrieve relevant documents
+    with st.spinner("Searching the document..."):
+
+        docs = retriever.invoke(query)
+
+        context = "\n\n".join(
+            [doc.page_content for doc in docs]
+        )
+
+
+    # Create prompt
+    final_prompt = prompt.invoke(
+        {
+            "context": context,
+            "question": query
+        }
+    )
+
+
+    # Generate response
     with st.chat_message("assistant"):
 
-        with st.spinner("Searching the document..."):
+        with st.spinner("Thinking..."):
 
-            try:
+            response = llm.invoke(final_prompt)
 
-                answer, retrieved_docs = generate_response(
-                    query=query,
-                    retriever=retriever,
-                    llm=llm,
-                    prompt=prompt
-                )
+            answer = response.content
 
-                st.markdown(answer)
+            st.markdown(answer)
 
-                if show_sources:
 
-                    with st.expander(
-                        "View retrieved document chunks"
-                    ):
-
-                        for index, doc in enumerate(
-                            retrieved_docs,
-                            start=1
-                        ):
-
-                            page_number = doc.metadata.get(
-                                "page",
-                                "Unknown"
-                            )
-
-                            st.markdown(
-                                f"#### Source {index} — Page {page_number}"
-                            )
-
-                            st.write(doc.page_content)
-
-                            st.divider()
-
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": answer,
-                        "sources": retrieved_docs
-                    }
-                )
-
-            except Exception as error:
-
-                error_message = (
-                    "An error occurred while generating the answer."
-                )
-
-                st.error(error_message)
-                st.exception(error)
+    # Save response
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": answer
+        }
+    )ion(error)
