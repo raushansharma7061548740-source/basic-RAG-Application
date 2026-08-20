@@ -1,12 +1,9 @@
+streamlit
+python-dotenv
 langchain
 langchain-community
 langchain-core
+langchain-huggingface
 langchain-mistralai
-mistralai
-faiss-cpu
+chromadb
 sentence-transformers
-pypdf
-python-dotenv
-fastapi
-uvicorn
-streamlit
