@@ -177,3 +177,4 @@ if query:
             "role": "assistant",
             "content": answer
         }
+    )
