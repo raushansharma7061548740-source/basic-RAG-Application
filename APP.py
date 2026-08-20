@@ -177,4 +177,3 @@ if query:
             "role": "assistant",
             "content": answer
         }
-    )ion(error)
